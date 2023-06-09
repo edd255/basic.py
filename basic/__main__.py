@@ -1,21 +1,34 @@
-from lex import Lexer
-from token import TokenType
+from lexer import Lexer
+from parser import Parser
+from argparse import ArgumentParser
+
+
+def get_argparser() -> ArgumentParser:
+    parser = ArgumentParser(description="Teeny Tiny Compiler")
+    parser.add_argument(
+        "-f",
+        "--file",
+        required=True,
+        dest="file",
+        action="store",
+        type=str,
+        help="source file",
+    )
+    return parser
 
 
 def main():
-    source = "IF+-123 foo*THEN/"
+    print("Teeny Tiny Compiler")
+    parser = get_argparser()
+    args = parser.parse_args()
+
+    with open(args.file, "r") as input_file:
+        source = input_file.read()
+
     lexer = Lexer(source)
-    lexer.next_char()
-    token = lexer.get_token()
-    while token.kind != TokenType.EOF:
-        print(f"[+] {token.kind}")
-        lexer.next_char()
-        lexer.skip_whitespace()
-        lexer.skip_comment()
-        token = lexer.get_token()
-        if token is None:
-            print(lexer.current_char)
-            lexer.abort("Unknown token.")
+    parser = Parser(lexer)
+    parser.rule_program()
+    print("Parsing completed.")
 
 
 if __name__ == "__main__":

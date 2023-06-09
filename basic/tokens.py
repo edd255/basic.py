@@ -29,19 +29,10 @@ KEYWORDS = [
     "ENDWHILE",
 ]
 
-RESIDUALS = [
-    "EOF",
-    "NEWLINE",
-    "NUMBER",
-    "IDENT",
-    "STRING"
-]
+RESIDUALS = ["EOF", "NEWLINE", "NUMBER", "IDENT", "STRING"]
 
 
-TokenType = Enum(
-    "TokenType",
-    KEYWORDS + OPERATORS + RESIDUALS
-)
+TokenType = Enum("TokenType", KEYWORDS + OPERATORS + RESIDUALS)
 
 
 class Token:
