@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "basic-py"
+version = "0.1.0"
+description = "A BASIC to MIPS Compiler"
+authors = ["edd255 <abaddon@disroot.org>"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "basic"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
