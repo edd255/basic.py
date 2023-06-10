@@ -1,5 +1,6 @@
 from lexer import Lexer
 from parser import Parser
+from emitter import Emitter
 from argparse import ArgumentParser
 
 
@@ -14,6 +15,15 @@ def get_argparser() -> ArgumentParser:
         type=str,
         help="source file",
     )
+    parser.add_argument(
+        "-o",
+        "--output",
+        required=True,
+        dest="output",
+        action="store",
+        type=str,
+        help="destination file",
+    )
     return parser
 
 
@@ -26,9 +36,13 @@ def main():
         source = input_file.read()
 
     lexer = Lexer(source)
-    parser = Parser(lexer)
+    emitter = Emitter(args.output)
+    parser = Parser(lexer, emitter)
+
     parser.rule_program()
-    print("Parsing completed.")
+    emitter.write_file()
+
+    print("Transpiling completed.")
 
 
 if __name__ == "__main__":

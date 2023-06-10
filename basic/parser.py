@@ -1,5 +1,6 @@
 from lexer import Lexer
 from tokens import TokenType
+from emitter import Emitter
 from sys import exit
 
 
@@ -18,8 +19,9 @@ from sys import exit
 # primary    ::= number | ident
 # newline    ::= '\n'+
 class Parser:
-    def __init__(self, lexer: Lexer) -> None:
+    def __init__(self, lexer: Lexer, emitter: Emitter) -> None:
         self.lexer = lexer
+        self.emitter = emitter
 
         # Variables declared so far
         self.symbols = set()
@@ -60,6 +62,8 @@ class Parser:
     # program := {statement}
     def rule_program(self) -> None:
         print("PROGRAM")
+        self.emitter.header_line("#include <stdio.h>")
+        self.emitter.header_line("int main(void) {")
 
         # Since some newlines are required in our grammar, need to skip the excess.
         while self.check_token(TokenType.NEWLINE):
@@ -68,6 +72,9 @@ class Parser:
         # Parse all statements in the program
         while not self.check_token(TokenType.EOF):
             self.rule_statement()
+
+        self.emitter.emit_line("return 0;")
+        self.emitter.emit_line("}")
 
         # CHeck that each label referenced in a GOTO is declared.
         for label in self.gotoed_labels:
@@ -84,41 +91,50 @@ class Parser:
                 print("STATEMENT-PRINT")
                 self.next_token()
                 if self.check_token(TokenType.STRING):
-                    # Simple string
+                    # Simple stritng
+                    self.emitter.emit_line(f'printf("{self.current_token.text}\\n");')
                     self.next_token()
                 else:
                     # Expect an expression
+                    self.emitter.emit('printf("%' + '.2f\\n", (float)(')
                     self.rule_expression()
+                    self.emitter.emit_line("));")
 
             # "IF" comparison "THEN" {statement} "ENDIF"
             case TokenType.IF:
                 print("STATEMENT-IF")
                 self.next_token()
+                self.emitter.emit("if(")
                 self.rule_comparison()
 
                 self.match(TokenType.THEN)
                 self.rule_newline()
+                self.emitter.emit_line(") {")
 
                 # Zero or more statements in the body
                 while not self.check_token(TokenType.ENDIF):
                     self.rule_statement()
 
                 self.match(TokenType.ENDIF)
+                self.emitter.emit_line("}")
 
             # "WHILE" comparison "REPEAT" {statement} "ENDWHILE"
             case TokenType.WHILE:
                 print("STATEMENT-WHILE")
                 self.next_token()
+                self.emitter.emit("while(")
                 self.rule_comparison()
 
                 self.match(TokenType.REPEAT)
                 self.rule_newline()
+                self.emitter.emit_line(") {")
 
                 # Zero or more statements in the loop body.
                 while not self.check_token(TokenType.ENDWHILE):
                     self.rule_statement()
 
                 self.match(TokenType.ENDWHILE)
+                self.emitter.emit_line("}")
 
             # "LABEL" ident
             case TokenType.LABEL:
@@ -130,6 +146,7 @@ class Parser:
                     self.abort(f"Label aready exists: {self.current_token.text}")
 
                 self.declared_labels.add(self.current_token.text)
+                self.emitter.emit_line(f"{self.current_token.text}:")
                 self.match(TokenType.IDENT)
 
             # "GOTO" ident
@@ -137,6 +154,7 @@ class Parser:
                 print("STATEMENT-GOTO")
                 self.next_token()
                 self.gotoed_labels.add(self.current_token.text)
+                self.emitter.emit_line(f"goto {self.current_token.text};")
                 self.match(TokenType.IDENT)
 
             # "LET" ident "=" expression
@@ -147,11 +165,14 @@ class Parser:
                 # Check if ident exists in symbol table. If not, declare it.
                 if self.current_token.text not in self.symbols:
                     self.symbols.add(self.current_token.text)
+                    self.emitter.header_line(f"float {self.current_token.text};")
 
+                self.emitter.emit(f"{self.current_token.text} = ")
                 self.match(TokenType.IDENT)
                 self.match(TokenType.EQ)
 
                 self.rule_expression()
+                self.emitter.emit_line(";")
 
             # "INPUT" ident
             case TokenType.INPUT:
@@ -161,13 +182,21 @@ class Parser:
                 # If variable doesn't already exist, declare it
                 if self.current_token.text not in self.symbols:
                     self.symbols.add(self.current_token.text)
+                    self.emitter.header_line(f"float {self.current_token.text};")
 
+                self.emitter.emit_line(
+                    f'if (0 == scanf("%f", &{self.current_token.text})) ' + "{"
+                )
+                self.emitter.emit_line(f"{self.current_token.text} = 0;")
+                self.emitter.emit('scanf("%')
+                self.emitter.emit_line('*s");')
+                self.emitter.emit_line("}")
                 self.match(TokenType.IDENT)
 
             case _:
                 self.abort(
                     f"Invalid statement at {self.current_token.text}",
-                    f"({self.current_token.kind.name})"
+                    f"({self.current_token.kind.name})",
                 )
 
         # Newline.
@@ -191,12 +220,14 @@ class Parser:
         self.rule_expression()
         # Must be at least one comparison operator and another expression.
         if self.is_comparison_operator():
+            self.emitter.emit(self.current_token.text)
             self.next_token()
             self.rule_expression()
         else:
             self.abort(f"Expected comparison oerator at {self.current_token.text}")
 
         while self.is_comparison_operator():
+            self.emitter.emit(self.current_token.text)
             self.next_token()
             self.rule_expression()
 
@@ -221,6 +252,7 @@ class Parser:
         self.rule_term()
         # Can have 0 or more +/- expressions
         while self.check_tokens([TokenType.PLUS, TokenType.MINUS]):
+            self.emitter.emit(self.current_token.text)
             self.next_token()
             self.rule_term()
 
@@ -232,6 +264,7 @@ class Parser:
 
         # Can have 0 or more *// and expressions
         while self.check_tokens([TokenType.ASTERISK, TokenType.SLASH]):
+            self.emitter.emit(self.current_token.text)
             self.next_token()
             self.rule_unary()
 
@@ -241,6 +274,7 @@ class Parser:
 
         # Optional unary +/-
         if self.check_tokens([TokenType.PLUS, TokenType.MINUS]):
+            self.emitter.emit(self.current_token.text)
             self.next_token()
 
         self.rule_primary()
@@ -249,12 +283,16 @@ class Parser:
         print(f"PRIMARY ({self.current_token.text})")
 
         if self.check_token(TokenType.NUMBER):
+            self.emitter.emit(self.current_token.text)
             self.next_token()
         elif self.check_token(TokenType.IDENT):
             # Ensure the variable already exists.
             if self.current_token.text not in self.symbols:
-                self.abort(f"Referencing variable before assignment: {self.current_token.text}")
+                self.abort(
+                    f"Referencing variable before assignment: {self.current_token.text}"
+                )
 
+            self.emitter.emit(self.current_token.text)
             self.next_token()
         else:
             self.abort(f"Unexpected token at {self.current_token.text}")
